@@ -29,6 +29,18 @@
     <div class="search-box">
       <PaperInput @label="查找场次" @value={{this.search}} @onChange={{this.setSearch}} />
     </div>
+    <div class="costume-strip">
+      <div class="costume-heading">
+        <small>COSTUME CHANGE</small>
+        <span>换装间隔（分钟）· 演员留空按默认</span>
+      </div>
+      <PaperInput @label="默认" @type="number" @value={{this.costumeDefaultLabel}} @onChange={{this.updateCostumeDefault}} class="costume-default-input" />
+      <div class="costume-actor-list">
+        {{#each this.costumeRows as |actor|}}
+          <PaperInput @label={{actor.name}} @type="number" @value={{actor.value}} @placeholder={{actor.placeholder}} @onChange={{fn this.updateCostumeOverride actor.name}} />
+        {{/each}}
+      </div>
+    </div>
   </section>
 
   <main class="stage-workspace">
@@ -187,12 +199,12 @@
         </div>
         <div class="issue-list">
           {{#each this.issues as |issue|}}
-            <button type="button" class="issue-item severity-{{issue.severity}}" {{on "click" (fn this.selectCue issue.cueId)}}>
+            <button type="button" class="issue-item severity-{{issue.severity}}" {{on "click" (fn this.selectIssue issue)}}>
               <span class="issue-icon">{{if issue.icon issue.icon "i"}}</span>
               <span><strong>{{issue.title}}</strong><small>{{issue.detail}}</small></span>
             </button>
           {{else}}
-            <div class="all-clear"><span>✓</span><p>未发现时间、负责人、撞场或失效引用问题。</p></div>
+            <div class="all-clear"><span>✓</span><p>未发现时间、负责人、撞场、换装或失效引用问题。</p></div>
           {{/each}}
         </div>
       </section>

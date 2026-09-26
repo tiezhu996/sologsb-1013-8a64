@@ -3,6 +3,7 @@ import { tracked } from '@glimmer/tracking';
 import { action } from '@ember/object';
 import type { Cue, CueDraft, CueIssue, CueKind, Scene, ShowData, VersionDiff, VersionSnapshot } from 'stage-cue-editor/models/show';
 import { CUE_KINDS, OWNERS } from 'stage-cue-editor/models/show';
+import { DEFAULT_COSTUME_CHANGE_MINUTES, findCostumeBreaches, normalizeCostumeChange, startSeconds } from 'stage-cue-editor/utils/costume';
 
 const STORAGE_KEY = 'sologsb-1013-stage-cue-editor-v1';
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -53,6 +54,7 @@ function initialShow(): ShowData {
         cue('cue-stage-2', '舞台', '中景屏风换为朱红', 60, '', { notes: '负责人尚未确认' }),
         cue('cue-actor-2', '演员', '群臣列队入场', 110, '赵一帆', { cast: ['群演 6 人', '侍女 4 人'], props: ['宫灯'] }),
         cue('cue-light-2', '灯光', '暖金顶光覆盖后区', 80, '李岚', { lighting: '顶光 4、5 号 70%，色温 3200K' }),
+        cue('cue-actor-3', '演员', '侍女奉酒穿行', 70, '赵一帆', { cast: ['侍女 4 人'], props: ['酒壶'], notes: '距上一场侍女下场仅 80 秒，用于换装检查示例' }),
       ],
     },
   ];
@@ -62,6 +64,7 @@ function initialShow(): ShowData {
     venue: '实验剧场 A 厅',
     date: '2026-10-18',
     scenes,
+    costumeChange: { defaultMinutes: DEFAULT_COSTUME_CHANGE_MINUTES, overrides: { '说书人／周启': 5 } },
     updatedAt: new Date().toISOString(),
   };
 }
@@ -71,7 +74,9 @@ function loadShow(): ShowData {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return initialShow();
     const parsed = JSON.parse(raw) as { show: ShowData; versions: VersionSnapshot[] };
-    return parsed.show ?? initialShow();
+    const show = parsed.show ?? initialShow();
+    show.costumeChange = normalizeCostumeChange(show.costumeChange);
+    return show;
   } catch {
     return initialShow();
   }
@@ -93,11 +98,6 @@ function recalculateScene(scene: Scene): void {
     item.offset = elapsed;
     elapsed += Number(item.duration) || 0;
   });
-}
-
-function startSeconds(value: string): number {
-  const [hour = '0', minute = '0'] = value.split(':');
-  return Number(hour) * 3600 + Number(minute) * 60;
 }
 
 function timeLabel(scene: Scene, offset: number): string {
@@ -171,6 +171,25 @@ export default class CueEditorComponent extends Component {
     return OWNERS;
   }
 
+  get costumeDefaultLabel(): string {
+    return String(this.show.costumeChange?.defaultMinutes ?? DEFAULT_COSTUME_CHANGE_MINUTES);
+  }
+
+  get costumeRows(): Array<{ name: string; value: string; placeholder: string }> {
+    const config = this.show.costumeChange;
+    const defaults = config?.defaultMinutes ?? DEFAULT_COSTUME_CHANGE_MINUTES;
+    const overrides = config?.overrides ?? {};
+    const actors = new Set(this.allCues.flatMap(({ cue: item }) => item.cast));
+    Object.keys(overrides).forEach((name) => actors.add(name));
+    return Array.from(actors)
+      .sort((a, b) => a.localeCompare(b, 'zh'))
+      .map((name) => ({
+        name,
+        value: overrides[name] != null ? String(overrides[name]) : '',
+        placeholder: `默认 ${defaults} 分钟`,
+      }));
+  }
+
   get allCues(): Array<{ cue: Cue; scene: Scene }> {
     return this.show.scenes.flatMap((scene) => scene.cues.map((item) => ({ cue: item, scene })));
   }
@@ -212,6 +231,18 @@ export default class CueEditorComponent extends Component {
         }
       }
     }
+
+    findCostumeBreaches(this.show.scenes, this.show.costumeChange).forEach((breach) => {
+      const gapLabel = breach.gapSeconds >= 0 ? `间隔仅 ${breach.gapSeconds} 秒` : `时间重叠 ${-breach.gapSeconds} 秒`;
+      issues.push({
+        id: `costume-${breach.actor}-${breach.nextCueId}`,
+        severity: 'warning',
+        title: '换装时间不足',
+        detail: `${breach.actor}：${breach.previousSceneLabel}「${breach.previousTitle}」→ ${breach.nextSceneLabel}「${breach.nextTitle}」${gapLabel}，换装需 ${breach.requiredSeconds} 秒，还差 ${breach.missingSeconds} 秒。`,
+        sceneId: breach.nextSceneId,
+        cueId: breach.nextCueId,
+      });
+    });
     return issues.map((issue) => ({ ...issue, icon: issue.severity === 'error' ? '!' : 'i' }));
   }
 
@@ -268,6 +299,33 @@ export default class CueEditorComponent extends Component {
     this.mutate((show) => {
       show.title = value;
     });
+  }
+
+  @action
+  updateCostumeDefault(value: string): void {
+    const minutes = Number(value);
+    if (!Number.isFinite(minutes) || minutes <= 0) return;
+    this.mutate((show) => {
+      show.costumeChange ??= { defaultMinutes: DEFAULT_COSTUME_CHANGE_MINUTES, overrides: {} };
+      show.costumeChange.defaultMinutes = minutes;
+    });
+  }
+
+  @action
+  updateCostumeOverride(actor: string, value: string): void {
+    this.mutate((show) => {
+      show.costumeChange ??= { defaultMinutes: DEFAULT_COSTUME_CHANGE_MINUTES, overrides: {} };
+      const minutes = Number(value);
+      if (!value.trim() || !Number.isFinite(minutes) || minutes <= 0) delete show.costumeChange.overrides[actor];
+      else show.costumeChange.overrides[actor] = minutes;
+    });
+  }
+
+  @action
+  selectIssue(issue: CueIssue): void {
+    if (issue.sceneId) this.activeSceneId = issue.sceneId;
+    if (issue.cueId) this.selectedCueId = issue.cueId;
+    this.draft = null;
   }
 
   @action

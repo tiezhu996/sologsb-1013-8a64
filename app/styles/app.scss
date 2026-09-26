@@ -143,6 +143,45 @@ body {
   font-size: 17px;
 }
 
+.costume-strip {
+  grid-column: 1 / -1;
+  padding-top: 9px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  border-top: 1px dashed var(--line);
+}
+
+.costume-heading small {
+  display: block;
+  color: #8b98a5;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+
+.costume-heading span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.costume-actor-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.costume-strip md-input-container {
+  width: 118px;
+  margin: 0;
+}
+
+.costume-strip .costume-default-input {
+  width: 74px;
+}
+
 .stage-workspace {
   display: grid;
   grid-template-columns: 260px minmax(580px, 1fr) 340px;

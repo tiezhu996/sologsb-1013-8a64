@@ -25,11 +25,17 @@ export interface Scene {
   cues: Cue[];
 }
 
+export interface CostumeChangeConfig {
+  defaultMinutes: number;
+  overrides: Record<string, number>;
+}
+
 export interface ShowData {
   title: string;
   venue: string;
   date: string;
   scenes: Scene[];
+  costumeChange: CostumeChangeConfig;
   updatedAt: string;
 }
 
