@@ -1,3 +1,11 @@
+// —— 换装时间配置（顶部可调）——
+// 同一演员相邻两次上场之间默认需留 3 分钟换装；
+// 个别演员换装较慢时，在下方表里按演员名（与提示中的演员写法完全一致）单独调长，单位：秒。
+export const DEFAULT_COSTUME_CHANGE_SECONDS = 180;
+export const COSTUME_CHANGE_OVERRIDES: Record<string, number> = {
+  '说书人／周启': 240,
+};
+
 export type CueKind = '灯光' | '音响' | '道具' | '演员' | '舞台' | '字幕';
 
 export interface Cue {

@@ -2,7 +2,12 @@ import Component from '@glimmer/component';
 import { tracked } from '@glimmer/tracking';
 import { action } from '@ember/object';
 import type { Cue, CueDraft, CueIssue, CueKind, Scene, ShowData, VersionDiff, VersionSnapshot } from 'stage-cue-editor/models/show';
-import { CUE_KINDS, OWNERS } from 'stage-cue-editor/models/show';
+import {
+  CUE_KINDS,
+  COSTUME_CHANGE_OVERRIDES,
+  DEFAULT_COSTUME_CHANGE_SECONDS,
+  OWNERS,
+} from 'stage-cue-editor/models/show';
 
 const STORAGE_KEY = 'sologsb-1013-stage-cue-editor-v1';
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -39,6 +44,7 @@ function initialShow(): ShowData {
         cue('cue-light-1', '灯光', '观众席渐暗 · 面光起', 45, '李岚', { lighting: 'FOH 1 号面光 65%，侧光暖白 40%', notes: '开演铃后 10 秒执行' }),
         cue('cue-actor-1', '演员', '说书人自左台入场', 90, '赵一帆', { cast: ['说书人／周启'], props: ['折扇'], notes: '追光跟随；入场后停留台中' }),
         cue('cue-sound-1', '音响', '古琴引子淡入', 120, '陈默', { sound: 'Q1 古琴引子，-18dB 淡入 6 秒', dependsOn: ['cue-deleted-old'], notes: '旧版依赖保留用于检查示例' }),
+        cue('cue-actor-1b', '演员', '说书人台右独白', 60, '赵一帆', { cast: ['说书人／周启'], notes: '紧接古琴引子后上场，注意换装时间' }),
         cue('cue-prop-1', '道具', '月牙灯升至舞台中线', 75, '孙禾', { props: ['月牙灯'], lighting: '顶排 3 号定点' }),
       ],
     },
@@ -194,6 +200,39 @@ export default class CueEditorComponent extends Component {
     });
 
     const allCues = this.allCues;
+    const appearances = new Map<
+      string,
+      Array<{ cue: Cue; scene: Scene; start: number; end: number }>
+    >();
+    allCues.forEach(({ cue: item, scene }) => {
+      new Set(item.cast).forEach((member) => {
+        const start = startSeconds(scene.startTime) + item.offset;
+        const list = appearances.get(member) ?? [];
+        list.push({ cue: item, scene, start, end: start + item.duration });
+        appearances.set(member, list);
+      });
+    });
+    appearances.forEach((list, member) => {
+      const required =
+        COSTUME_CHANGE_OVERRIDES[member] ?? DEFAULT_COSTUME_CHANGE_SECONDS;
+      const ordered = [...list].sort((a, b) => a.start - b.start);
+      for (let index = 1; index < ordered.length; index += 1) {
+        const previous = ordered[index - 1]!;
+        const current = ordered[index]!;
+        const gap = current.start - previous.end;
+        if (gap >= required) continue;
+        const gapText = gap >= 0 ? `只隔 ${gap} 秒` : `时间重叠 ${-gap} 秒`;
+        issues.push({
+          id: `costume-${member}-${current.cue.id}`,
+          severity: 'error',
+          title: '换装时间不足',
+          detail: `${member} 从${previous.scene.act} ${previous.scene.name}「${previous.cue.title}」下场（${timeLabel(previous.scene, previous.cue.offset + previous.cue.duration)}），到${current.scene.act} ${current.scene.name}「${current.cue.title}」上场（${timeLabel(current.scene, current.cue.offset)}）${gapText}；换装需 ${required} 秒，还差 ${required - gap} 秒。`,
+          sceneId: current.scene.id,
+          cueId: current.cue.id,
+        });
+      }
+    });
+
     for (let index = 0; index < allCues.length; index += 1) {
       for (let next = index + 1; next < allCues.length; next += 1) {
         const left = allCues[index]!;
